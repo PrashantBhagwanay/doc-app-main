@@ -1,0 +1,98 @@
+import React, { useState, useEffect } from "react";
+import {
+    View,
+    Text,
+    TextInput,
+    Image,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+} from "react-native";
+import { useRoute, useNavigation } from "@react-navigation/native";
+import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
+
+const VisitingCardForm = () => {
+    const route = useRoute();
+    const navigation = useNavigation();
+
+    const { imageUrl, clinicData, location } = route.params || {};
+
+    const [formData, setFormData] = useState({});
+
+    useEffect(() => {
+        if (clinicData) {
+            setFormData({
+                ...clinicData,
+                latitude: location?.latitude || "",
+                longitude: location?.longitude || "",
+            });
+        }
+    }, [clinicData, location]);
+
+    // Function to handle input changes
+    const handleInputChange = (key, text) => {
+        setFormData((prev) => ({
+            ...prev,
+            [key]: text,
+        }));
+    };
+
+    // Function to render fields dynamically
+    const renderField = (key, value, editable = true) => (
+        <TextInput
+            style={styles.input}
+            value={value ? value.toString() : ""}
+            editable={editable}
+            onChangeText={editable ? (text) => handleInputChange(key, text) : undefined}
+        />
+    );
+
+    return (
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
+            <View style={styles.imageContainer}>
+                {imageUrl ? (
+                    <Image source={{ uri: imageUrl }} style={styles.image} />
+                ) : (
+                    <Text style={styles.noImageText}>No Image Available</Text>
+                )}
+                <TouchableOpacity onPress={() => navigation.navigate("success")}>
+                    <FontAwesome5 name="cloud-upload-alt" size={34} color="#003366" />
+                </TouchableOpacity>
+            </View>
+
+            <View style={styles.formContainer}>
+                {Object.keys(formData).map((key) => (
+                    <View key={key}>
+                        <Text style={styles.sectionTitle}>{key.replace(/_/g, " ")}</Text>
+                        {renderField(key, formData[key], key !== "latitude" && key !== "longitude")}
+                    </View>
+                ))}
+            </View>
+        </ScrollView>
+    );
+};
+
+const styles = StyleSheet.create({
+    scrollContainer: { flexGrow: 1, padding: 20, backgroundColor: "#fff" },
+    imageContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 20,
+    },
+    image: { width: "80%", height: 400, resizeMode: "contain" },
+    noImageText: { textAlign: "center", fontSize: 16, color: "gray", marginBottom: 20 },
+    formContainer: { gap: 1, minHeight: "100%" },
+    sectionTitle: { fontSize: 16, fontWeight: "bold", marginTop: 20, textTransform: "capitalize" },
+    input: {
+        fontSize: 14,
+        padding: 10,
+        backgroundColor: "#f9f9f9",
+        borderRadius: 5,
+        marginVertical: 3,
+        borderWidth: 1,
+        borderColor: "#ccc",
+    },
+});
+
+export default VisitingCardForm;

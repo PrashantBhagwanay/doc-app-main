@@ -1,851 +1,538 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 import {
     View,
+    Text,
     TouchableOpacity,
     Image,
     StyleSheet,
-    Alert,
-    Text,
-    ScrollView,
-    RefreshControl,
-    ActivityIndicator,
-    PermissionsAndroid,
+    Dimensions,
     Platform,
-    FlatList,
-    BackHandler,
-    Modal,
-    StatusBar
-} from 'react-native';
-import { launchCamera, CameraOptions, launchImageLibrary, CameraType } from 'react-native-image-picker';
-import { Picker } from '@react-native-picker/picker';
-import RNFS from 'react-native-fs';
-import axios from 'axios';
-import Geolocation from '@react-native-community/geolocation';
-import VisitingCardForm from '../VisitingCard/VisitingCardForm';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../../../App';
+    ToastAndroid,
+    ScrollView,
+    ActivityIndicator,
+    Alert,
+} from "react-native";
+import { Camera, useCameraDevice } from "react-native-vision-camera";
 import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
+import * as ImagePicker from "react-native-image-picker";
+import axios from "axios";
+import SideBar from "./SideBar";
+import { ToastBar, ToastHandle, ToastType } from "../Toast/ToastBar";
 
-import { Camera, CameraDevice, useCameraDevice } from 'react-native-vision-camera';
-import changeNavigationBarColor from 'react-native-navigation-bar-color';
 
+import TextRecognition from "@react-native-ml-kit/text-recognition";
+import { useNavigation } from "@react-navigation/native";
 
-// import { launchImageLibrary, launchCamera, ImagePickerResponse } from 'react-native-image-picker';
-const Dashboard = () => {
+const { width, height } = Dimensions.get("window");
 
-    const navigation = useNavigation<NavigationProps>();
+export default function DocumentCameraScreen() {
+    const [cameraPosition, setCameraPosition] = useState<"front" | "back">("back");
+    const device = useCameraDevice(cameraPosition);
     const cameraRef = useRef<Camera>(null);
 
+    const toastRef = useRef<ToastHandle>(null);
+    const toast = (m: string, t: ToastType = "info", ms?: number) => toastRef.current?.show(m, t, ms);
 
-    let device: CameraDevice | undefined = useCameraDevice('back'); // ✅ Always call hooks at the top level
+
+    const [hasPermission, setHasPermission] = useState(false);
+    const [photo, setPhoto] = useState<string | null>(null);
+    const [uploading, setUploading] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    const [zoomIdx, setZoomIdx] = useState(1); // default 1x
+    const zoomSteps = [0.6, 1, 2, 3, 10];
+    const zoom = zoomSteps[zoomIdx];
+
+    // useEffect(() => {
+    //     (async () => {
+    //         const status: any = await Camera.requestCameraPermission();
+    //         setHasPermission(status === "authorized");
+    //     })();
+    // }, []);
 
 
-    // console.log("..........................device", device)
-    useEffect(() => {
-        changeNavigationBarColor('black', true);
-        const getPermissions = async () => {
-            let cameraPermission: any = Camera.getCameraPermissionStatus();
+    const navigation = useNavigation<any>();
+    const [extracting, setExtracting] = useState(false);
 
-            if (cameraPermission !== 'authorized') {
-                cameraPermission = await Camera.requestCameraPermission();
+    const extractTextFromPhoto = async () => {
+        if (!photo || extracting) return;
+        try {
+            setExtracting(true);
+            const result = await TextRecognition.recognize(photo);
+            // result.text = puri combined text
+            // result.blocks = line/block wise breakdown 
+
+            console.log("OCR result:", result);
+            Alert.alert("OCR Debug", JSON.stringify(result, null, 2));
+            console.log(JSON.stringify(result, null, 2))
+
+            if (!result.text?.trim()) {
+                toast("No text detected", "error");
+                return;
             }
 
-            if (Platform.OS === 'android') {
-                const granted = await PermissionsAndroid.request(
-                    PermissionsAndroid.PERMISSIONS.CAMERA,
-                    {
-                        title: 'Camera Permission',
-                        message: 'App needs access to your camera',
-                        buttonNeutral: 'Ask Me Later',
-                        buttonNegative: 'Cancel',
-                        buttonPositive: 'OK',
-                    }
-                );
-
-                if (
-                    granted === PermissionsAndroid.RESULTS.GRANTED &&
-                    cameraPermission === 'authorized'
-                ) {
-                    setHasPermission(true);
-                } else {
-                    setHasPermission(true);
-                }
-            } else {
-                setHasPermission(cameraPermission === 'authorized');
-            }
-        };
-
-        getPermissions();
-    }, []);
-
-    // ✅ Wait for both permission and device to be ready
-
-
-    type NavigationProps = StackNavigationProp<RootStackParamList, 'VisitingCardForm'>;
-
-
-
-    const getRandomCoordinates = () => {
-        return {
-            latitude: (28.5000 + Math.random() * 0.2).toFixed(6),  // Random latitude near 28.5
-            longitude: (77.3000 + Math.random() * 0.2).toFixed(6), // Random longitude near 77.3
-        };
-    };
-    const [selectedCard, setSelectedCard] = useState('');
-    const [selected, setSelected] = useState<any>(null);
-    const [loading, setLoading] = useState(false);
-    const [refreshing, setRefreshing] = useState(false);
-    const [clinicData, setClinicData] = useState<any>(null);
-    const [locationData, setLocationData] = useState<any>(null);
-    const [selectedImage, setSelectedImage] = useState<any>(null);
-    const [modalVisible, setModalVisible] = useState(false);
-    const [kyc, setKyc] = useState(false);
-    const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-
-
-
-
-    const requestCameraPermission = async () => {
-        if (Platform.OS === 'android') {
-            try {
-                const granted = await PermissionsAndroid.request(
-                    PermissionsAndroid.PERMISSIONS.CAMERA,
-                    {
-                        title: 'Camera Permission',
-                        message: 'This app requires camera access to take photos.',
-                        buttonNeutral: 'Ask Me Later',
-                        buttonNegative: 'Cancel',
-                        buttonPositive: 'OK'
-                    }
-                );
-                return granted === PermissionsAndroid.RESULTS.GRANTED;
-            } catch (err) {
-                console.error('Permission Error:', err);
-                return false;
-            }
+            navigation.navigate("ExtractedTextScreen", {
+                extractedText: result.text,
+                photoUri: photo,
+            });
+        } catch (err: any) {
+            console.log("OCR error:", err);
+            toast("Text not extracted", "error");
+        } finally {
+            setExtracting(false);
         }
-        return true;
     };
 
-    const abc = (item: any) => {
-        // setSelected(item)
-        if (item == "KYC") {
-            setKyc(true)
-        }
-        setSelectedCard(item)
-        // setModalVisible(true)
-        // takePhoto()
-    }
+    
+    const showToast = (msg: string) => {
+        if (Platform.OS === "android") ToastAndroid.show(msg, ToastAndroid.SHORT);
+    };
 
     const takePhoto = async () => {
-        // const hasPermission = await requestCameraPermission();
-        if (!hasPermission) {
-            Alert.alert('Permission Denied', 'Camera permission is required.');
-            return;
-        }
-
-        // if (cameraRef.current == null) return;
-
-        if (!selectedCard) {
-            Alert.alert('Error', 'Please select a card before taking a photo.');
-            return;
-        }
-
-
-        Geolocation.getCurrentPosition(
-            (position) => {
-                const { latitude, longitude } = position.coords;
-                console.log('User Location:............', latitude, longitude);
-                // setLocationData()
-                // setClinicData({ latitude, longitude }); 
-                setLocationData({ latitude, longitude });
-            },
-            (error) => {
-                // console.error('Location Error:', error);
-                // Alert.alert('Location Error', error.message);
-            },
-            { enableHighAccuracy: false, timeout: 25000, maximumAge: 25000 }
-        );
-
-        if (cameraRef.current == null) return;
-
+        if (!cameraRef.current) return;
         try {
-            const photo = await cameraRef.current.takePhoto({
-                flash: 'off', // or 'on'/'auto' if needed
-            });
+            const p = await cameraRef.current.takePhoto({ flash: "off" });
+            setPhoto("file://" + p.path);
+            showToast("Captured");
+        } catch {
+            showToast("Failed to capture");
+        }
+    };
 
-            console.log('Photo captured:', photo);
-
-            if (photo) {
-                console.log('Captured Image URI:', photo.path);
-
-                // Convert image to base64
-                try {
-
-                    const base64Image = await RNFS.readFile(photo.path, 'base64');
-                    const imageUri = 'file://' + photo.path;
-                    setSelectedImage(imageUri);
-                    await sendImageToAPI(base64Image, photo.path);
-                } catch (error: any) {
-                    console.error('Image Processing Error:', error);
-                    Alert.alert("launchCamera error line 162", error);
-                }
-            } else {
-                Alert.alert('Error line 165', 'Could not retrieve image URI.');
+    const pickFromGallery = () => {
+        ImagePicker.launchImageLibrary({ mediaType: "photo" }, (res: any) => {
+            if (!res.didCancel && res.assets?.length > 0) {
+                setPhoto(res.assets[0].uri);
             }
-
-            // Do whatever you want with the photo — preview, upload, etc.
-            // Optional preview
-        } catch (error) {
-            console.error('Failed to take photo:', error);
-        }
-
-
-
-    };
-
-    const handleGalleryLaunch = async () => {
-
-        if (!selectedCard) {
-            Alert.alert('Error', 'Please select a card before upload a photo.');
-            return;
-        }
-        try {
-            Geolocation.getCurrentPosition(
-                (position) => {
-                    const { latitude, longitude } = position.coords;
-                    setLocationData({ latitude, longitude });
-                },
-                (error) => {
-                    console.error('Location Error:', error);
-                    Alert.alert('Location Error', error?.message || 'Location fetch failed');
-                },
-                { enableHighAccuracy: false, timeout: 25000, maximumAge: 25000 }
-            );
-
-            launchImageLibrary(
-                { mediaType: 'photo', quality: 1 },
-                async (response) => {
-                    if (response.assets && response.assets.length > 0) {
-                        let imageUri: any = response.assets[0].uri;
-                        setSelectedImage(imageUri);
-
-                        if (Platform.OS === 'android' && !imageUri.startsWith('file://')) {
-                            imageUri = 'file://' + imageUri;
-                        }
-
-                        if (imageUri) {
-                            const base64Image = await RNFS.readFile(imageUri, 'base64');
-                            // console.log(".....................................", base64Image)
-                            await sendImageToAPI(base64Image, imageUri);
-                        } else {
-                            Alert.alert('Error', 'Could not retrieve image URI.');
-                        }
-                    }
-                }
-            );
-        } catch (error: any) {
-            console.error('Gallery Upload Error:', error);
-            Alert.alert('Something went wrong');
-        }
-    };
-
-    const filterEmptyFields = (data: any) => {
-        return Object.fromEntries(
-            Object.entries(data).filter(([_, value]) => value)  // null, undefined, '' 
-        );
-    };
-
-    const mergeAadhaarData = (top: any, bottom: any) => {
-        return filterEmptyFields({
-            aadhaar: bottom?.aadhaar?.value || top?.aadhaar?.value || null,
-            name: bottom?.name?.value || top?.name?.value || null,
-            dob: bottom?.dob?.value || top?.dob?.value || null,
-            gender: bottom?.gender?.value || top?.gender?.value || null,
-            phoneNumber: top?.phoneNumber?.value || null,
-            address: top?.address?.value || null,
-            careOf: top?.addressSplit?.careOf || null,
-            city: top?.addressSplit?.city || null,
-            district: top?.addressSplit?.district || null,
-            state: top?.addressSplit?.state || null,
-            pin: top?.addressSplit?.pin || null,
-            line1: top?.addressSplit?.line1 || null,
-            line2: top?.addressSplit?.line2 || null,
-            houseNumber: top?.addressSplit?.houseNumber || null,
         });
     };
 
-    const parseDocumentData = (response: any) => {
-        const results = response?.data?.result || [];
+    const resetPhoto = () => setPhoto(null);
 
-        // ✅ Handle Aadhaar Front Top + Bottom combined case
-        if (results.length === 2) {
-            const top = results.find((doc: any) => doc?.type === "Aadhaar Front Top")?.details || {};
-            const bottom = results.find((doc: any) => doc?.type === "Aadhaar Front Bottom")?.details || {};
-
-            if (top && bottom) {
-                return mergeAadhaarData(top, bottom);
-            }
-        }
-
-        // ✅ Handle individual document types
-        const result = results?.[0] || {};
-        const details = result?.details || {};
-        const type = result?.type || "";
-
-        switch (type) {
-            case "Aadhaar Front":
-                return filterEmptyFields({
-                    aadhaar: details?.aadhaar?.value || null,
-                    name: details?.name?.value || null,
-                    dob: details?.dob?.value || null,
-                    gender: details?.gender?.value || null,
-                    phoneNumber: details?.phoneNumber?.value || null,
-                    guardianName: details?.guardianName?.value || null,
-                    father: details?.father?.value || null,
-                    mother: details?.mother?.value || null,
-                    yob: details?.yob?.value || null
-                });
-
-            case "Aadhaar Back":
-                return filterEmptyFields({
-                    aadhaar: details?.aadhaar?.value || null,
-                    address: details?.address?.value || null,
-                    district: details?.addressSplit?.district || null,
-                    state: details?.addressSplit?.state || null,
-                    pin: details?.addressSplit?.pin || null,
-                    careOf: details?.addressSplit?.careOf || null,
-                    line1: details?.addressSplit?.line1 || null,
-                    line2: details?.addressSplit?.line2 || null,
-                });
-
-            case "DL":  // ✅ Driving License
-                return filterEmptyFields({
-                    dl: details?.dl?.value || null,
-                    name: details?.name?.value || null,
-                    dob: details?.dob?.value || null,
-                    guardianName: details?.guardianName?.value || null,
-                    address: details?.address?.value || null,
-                    pin: details?.addressSplit?.pin || null,
-                });
-
-            case "Passport":  // ✅ Passport
-                return filterEmptyFields({
-                    passport: details?.passport?.value || null,
-                    firstName: details?.firstName?.value || null,
-                    lastName: details?.lastName?.value || null,
-                    dob: details?.dob?.value || null,
-                    nationality: details?.nationality?.value || null,
-                    gender: details?.gender?.value || null,
-                });
-
-            case "Pan":  // ✅ PAN Card
-                return filterEmptyFields({
-                    pan: details?.pan?.value || null,
-                    name: details?.name?.value || null,
-                    dob: details?.dob?.value || null,
-                    guardianName: details?.guardianName?.value || null,
-                });
-
-            case "Voter ID":  // ✅ Voter ID
-                return filterEmptyFields({
-                    voterId: details?.voterId?.value || null,
-                    name: details?.name?.value || null,
-                    dob: details?.dob?.value || null,
-                    gender: details?.gender?.value || null,
-                    guardianName: details?.guardianName?.value || null,
-                });
-
-            default:
-                return filterEmptyFields({
-                    message: "Unknown document type"
-                });
-        }
-    };
-
-    console.log("   ")
-
-    const sendImageToAPI = async (imageUrl: string, imageUri: any) => {
-        // const payload = { urls: [imageUrl] };
-        let payload = { base64_images: [imageUrl] };
-        let payload2 = { base64_image_data: imageUrl };
-        // console.log("payload", payload)
-        // console.log("payload2", payload2)
-        console.log("kyc", kyc)
-        console.log(" { base64_image_data: [imageUrl] }")
-        setModalVisible(false)
-        setLoading(true);
-
-        try {
-
-            let response;
-
-            kyc ? response = await axios.post(
-                // 'http://103.233.244.174:8088/api/v1/clinic-predictions',
-                // 'https://doc-api.noosyn.ai/api/v1/clinic-predictions',
-                'https://kyc-api.noosyn.ai/api/v1/predictions',
-                payload2,
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        // 'Authorization': 'Bearer pG4XBvliGN3tfzpI7AiwZ9PhVJsWXN4G8sa6MdwD',
-                        'Authorization': 'Bearer pG4XBvliGN3tfzpI7AiwZ9PhVJsWXN4G8sa6MdwD',
-                    },
-                }
-            ) : response = await axios.post(
-                // 'http://103.233.244.174:8088/api/v1/clinic-predictions',
-                'https://doc-extraction-api.noosyn.ai/api/v1/clinic-predictions',
-                payload,
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        // 'Authorization': 'Bearer pG4XBvliGN3tfzpI7AiwZ9PhVJsWXN4G8sa6MdwD',
-                        'Authorization': 'Bearer 123456789',
-                    },
-                }
-            );
-
-
-            console.log("url")
-            console.log('API Response:', response.data);
-            // setClinicData(response.data);
-            setKyc(false)
-
-
-            // navigation.navigate('VisitingCardForm', {
-            //     imageUrl: imageUri,
-            //     clinicData: response.data,
-            //     location: locationData
-            // });
-
-            console.log("locationData from the Dashboard", locationData)
-
-            navigation.navigate('VisitingCardForm', {
-                imageUrl: 'file://' + imageUri,
-                clinicData: kyc
-                    ? parseDocumentData(response)   // KYC case: parsed data
-                    : response.data,                // Non-KYC case: pura response
-                location: locationData
-            });
-
-            setSelectedImage("");
-            setLoading(false);
-        } catch (error: any) {
-            console.error('API Error:', error);
-            Alert.alert("Error from api")
-
-
-            setLoading(false);
-        }
-    };
-
-
-    const onRefresh = () => {
-        setRefreshing(true);
-        setSelectedCard(""); // Reset selected card
-        setClinicData(null); // Reset clinic data
-        setTimeout(() => setRefreshing(false), 1000);
-    };
-
-
-    const options = [
-        { label: 'Visiting Card', image: require('../../scrollbuttonimages/image1.png') },
-        { label: 'KYC', image: require('../../scrollbuttonimages/image2.png') },
-        { label: 'Vehicle No.', image: require('../../scrollbuttonimages/image3.png') },
-        { label: 'Invoice', image: require('../../scrollbuttonimages/image4.png') },
-        { label: 'Document', image: require('../../scrollbuttonimages/image4.png') },
-    ];
-
-    const [selectedIndex, setSelectedIndex] = useState(null);
-
-    const [selectedOption, setSelectedOption] = useState(""); // Manage KYC, Visiting Card etc.
-
-    const xyz = (item: any, index: any) => {
-        setSelectedIndex(index);
-        setSelectedOption(item.label);
-        setSelectedCard(item.label)
-        console.log("...", item)
-        if (item.label == "KYC") {
-            setKyc(true)
-            console.log("KYC PRESSED")
-        }
-        // abc(item)
-    }
-
-
-    if (hasPermission !== true || !device) {
+    // 🔧 FIX: correct loading condition
+    if (!device || hasPermission) {
         return (
-            <View style={{
-                flex: 1,
-                justifyContent: 'center',
-                alignItems: 'center',
-                backgroundColor: 'black',
-            }}>
-                <Text style={{ color: 'white' }}>Loading Camera...</Text>
+            <View style={styles.center}>
+                <Text>Loading camera…</Text>
             </View>
         );
     }
 
+    
+    const uploadPhoto = async () => {
+        if (!photo || uploading) return;
+
+        try {
+            setUploading(true);
+
+            // Extract filename
+            let fileName = (photo.split("/").pop() || "").split("?")[0] || "invoice.jpeg";
+
+            // Detect extension and mime
+            const ext = (fileName.split(".").pop() || "").toLowerCase();
+            const mime =
+                ext === "png" ? "image/png" :
+                    ext === "jpg" || ext === "jpeg" ? "image/jpeg" :
+                        ext === "pdf" ? "application/pdf" :
+                            "application/octet-stream";
+
+            // Build form data EXACT like curl
+            const formData = new FormData();
+            formData.append("invoice_file", {
+                uri: photo,        // local path (file:// or content:// in RN)
+                type: mime,        // e.g. image/jpeg
+                name: fileName,    // e.g. invoice3.jpeg
+            } as any);
+
+            console.log("Uploading file:", formData);
+
+            const res = await axios.post(
+                "https://deploy.evolveonai.in/upload",
+                formData,
+                {
+                    headers: {
+                        // Let axios set boundary automatically
+                        "Content-Type": "multipart/form-data",
+                    },
+                    timeout: 20000,
+                }
+            );
+
+            const msg = res?.data?.message || "File uploaded successfully!";
+            toast(msg, "success");
+            setPhoto(null);
+
+        } catch (error: any) {
+            let errMsg = "Upload failed";
+
+            if (error?.response) {
+                const status = error.response.status;
+                errMsg = error.response.data?.message || `Error ${status}`;
+                if (status === 413) errMsg = "File too large to upload.";
+                else if (status === 415) errMsg = "Unsupported file type.";
+                else if (status === 404) errMsg = "Upload URL not found.";
+                else if (status === 405) errMsg = "Method not allowed on this endpoint.";
+                else if (status === 500) errMsg = "Server error. Please try again.";
+            } else if (error?.code === "ECONNABORTED") {
+                errMsg = "Network timeout. Try again.";
+            } else if (error?.message?.toLowerCase?.().includes("network")) {
+                errMsg = "Network error. Check internet and retry.";
+            } else if (error?.message) {
+                errMsg = error.message;
+            }
+
+            toast(errMsg, "error");
+            console.log("Upload error detail:", {
+                status: error?.response?.status,
+                data: error?.response?.data,
+                headers: error?.response?.headers,
+                code: error?.code,
+                message: error?.message,
+            });
+        } finally {
+            setUploading(false);
+        }
+    };
+
+   
+    const extractViaAPI = async () => {
+        if (!photo || uploading) return;
+        console.log("Starting extraction for:", photo);
+
+        try {
+            setUploading(true);
+
+            let fileName = (photo.split("/").pop() || "").split("?")[0] || "label.jpg";
+            const ext = (fileName.split(".").pop() || "").toLowerCase();
+            const mime =
+                ext === "png" ? "image/png" :
+                    ext === "jpg" || ext === "jpeg" ? "image/jpeg" :
+                        "image/jpeg";
+
+            const formData = new FormData();
+            formData.append("file", {
+                uri: photo,
+                type: mime,
+                name: fileName,
+            } as any);
+            formData.append("doc_type", "EXTRACTION");
+            formData.append("mode", "ONLINE");
+
+            const res = await axios.post(
+                "http://17.224.50.181:8150/api/v1/extract",
+                formData,
+                {
+                    headers: {
+                        "Authorization": "Bearer 123456789",
+                        "Content-Type": "multipart/form-data",
+                    },
+                    timeout: 30000,
+                }
+            );
+
+            console.log("Extraction result:", res.data);
+
+            navigation.navigate("ExtractedTextScreen", {
+                extractedText: JSON.stringify(res.data, null, 2), 
+                photoUri: photo,
+            });
+
+        } catch (error: any) {
+            console.log("Extract error:", error?.response?.data || error?.message);
+            toast("Extraction failed", "error");
+        } finally {
+            setUploading(false);
+        }
+    };
+
     return (
-        <View
-            style={{
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                height: "100%",
-                backgroundColor: "black",
-            }}
-        >
-            <StatusBar
-                backgroundColor="black"
-                barStyle="light-content"
-                translucent={false}
-            />
-            {/* Top Section - Camera and Scrollable Area */}
-            {/* Header */}
-            <View
-                style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    paddingHorizontal: 16,
-                    paddingTop: 16,
-                    paddingBottom: 8,
-                    backgroundColor: 'black',
-                    zIndex: 999,
-                }}
-            >
-                <TouchableOpacity onPress={() => navigation.goBack?.()}>
-                    <FontAwesome5 name="chevron-left" size={20} color="#fff" />
-                </TouchableOpacity>
+        <View style={styles.root}>
+            <ToastBar ref={toastRef} />
 
-                <TouchableOpacity onPress={() => console.log('Settings Pressed')}>
-                    <FontAwesome5 name="cog" size={20} color="#fff" />
-                </TouchableOpacity>
-            </View>
-            <View>
-                <ScrollView
-                    contentContainerStyle={styles.container}
-                    refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                    }
+            {/* Top bar */}
+            <View style={styles.statusBar}>
+                <FontAwesome5 name="bolt" size={12} />
+                <TouchableOpacity
+                    style={styles.hamburgerButton}
+                    onPress={() => setSidebarOpen(true)}
                 >
-                    {!clinicData && (
-                        <>
-                            {selectedImage ? (
-                                <Image
-                                    source={{ uri: selectedImage }}
-                                    style={StyleSheet.absoluteFill}
-                                    resizeMode="cover"
-                                />
-                            ) : (
-                                <Camera
-                                    ref={cameraRef}
-                                    style={StyleSheet.absoluteFill}
-                                    device={device}
-                                    isActive={true}
-                                    photo={true}
-                                />
-                            )}
-
-                            {
-                                !selectedImage ? <TouchableOpacity style={styles.button} disabled={loading}>
-                                    <TouchableOpacity style={styles.frameBox} disabled={loading}>
-                                        {/* Top Left */}
-                                        <View style={[styles.corner, styles.topLeft]} />
-                                        {/* Top Right */}
-                                        <View style={[styles.corner, styles.topRight]} />
-                                        {/* Bottom Left */}
-                                        <View style={[styles.corner, styles.bottomLeft]} />
-                                        {/* Bottom Right */}
-                                        <View style={[styles.corner, styles.bottomRight]} />
-                                    </TouchableOpacity>
-                                </TouchableOpacity> : <></>
-                            }
-                        </>
-                    )}
-
-
-                    {loading && (
-                        <ActivityIndicator size="large" color="#007bff" style={styles.loader} />
-                    )}
-                </ScrollView>
+                    <FontAwesome5 name="bars" size={24} color="black" />
+                </TouchableOpacity>
+                <FontAwesome5 name="play-circle" size={14} />
+                <FontAwesome5 name="dot-circle" size={14} />
             </View>
 
-            {/* Middle Section - Options Bar */}
-            <View style={{ marginTop: 0, marginLeft: 10 }}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {options.map((item, index) => (
-                        <View
-                            key={index}
-                            style={{ alignItems: 'center', marginHorizontal: 15, marginVertical: 20 }}
-                        >
+            {/* Camera fills area; stays mounted. We just deactivate while previewing */}
+            <View style={styles.previewWrap}>
+                <Camera
+                    ref={cameraRef}
+                    style={StyleSheet.absoluteFill}
+                    device={device}
+                    isActive={!photo} // ❗ stop camera when preview is open
+                    photo={true}
+                    zoom={zoom}
+                />
+
+                {/* Zoom chips overlay (hide when previewing) */}
+                {!photo && (
+                    <View style={styles.zoomOverlay}>
+                        {zoomSteps.map((z, i) => (
                             <TouchableOpacity
-                                onPress={() => xyz(item, index)}
-                                style={{
-                                    // width: 60,
-                                    height: 60,
-                                    // borderRadius: 30,
-                                    backgroundColor: 'black',
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    // borderWidth: selectedIndex === index ? 2 : 0,
-                                    // borderColor: selectedIndex === index ? '#456dfc' : 'transparent',
-                                }}
+                                key={z}
+                                style={[styles.zoomChip, i === zoomIdx && styles.zoomChipActive]}
+                                onPress={() => setZoomIdx(i)}
                             >
-                                {/* <Image source={item.image} style={{ width: 24, height: 24 }} resizeMode="contain" /> */}
-                                <Text
-                                    style={{
-                                        fontSize: 15,
-                                        color: selectedIndex === index ? '#0096FF' : 'white',
-                                        marginTop: 2,
-                                        textAlign: 'center',
-                                        width: '100%', // 👈 ensures it wraps within available space
-                                    }}
-                                >
-                                    {item.label}
+                                <Text style={[styles.zoomTxt, i === zoomIdx && styles.zoomTxtActive]}>
+                                    {z === 1 ? "1x" : z.toString()}
                                 </Text>
-
                             </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
+
+                {/* 🔥 PREVIEW MODAL OVERLAY */}
+                {photo && (
+                    <View style={styles.previewOverlay}>
+                        {/* dark backdrop */}
+                        <View style={styles.backdrop} />
+
+                        {/* preview card */}
+                        <View style={styles.previewCard}>
+                            <Image source={{ uri: photo }} style={styles.previewImg} />
+
+                            <View style={styles.previewActions}>
+                                <TouchableOpacity
+                                    style={[styles.actionBtn, styles.uploadBtn]}
+                                    onPress={uploadPhoto}
+                                    disabled={uploading}
+                                >
+                                    <FontAwesome5 name="cloud-upload-alt" size={18} color="#fff" />
+                                    <Text style={styles.actionTxtLight}>
+                                        {uploading ? "Uploading..." : "Upload"}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[styles.actionBtn, styles.retakeBtn]}
+                                    onPress={resetPhoto}
+                                    disabled={uploading}
+                                >
+                                    <FontAwesome5 name="redo" size={16} color="#000" />
+                                    <Text style={styles.actionTxtDark}>Retake</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[styles.actionBtn, styles.extractBtn]}
+                                    onPress={extractViaAPI}          // 👈 change kiya
+                                    disabled={uploading || extracting}
+                                >
+                                    <Text style={styles.actionTxtLight}>
+                                        {uploading ? "Extracting..." : "Extract Text"}   {/* uploading state use kiya */}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
-                    ))}
-                </ScrollView>
+
+                        {/* loader on top when uploading */}
+                        {uploading && (
+                            <View style={styles.loaderOverlay}>
+                                <ActivityIndicator size="large" />
+                                <Text style={{ color: "#fff", marginTop: 8 }}>Uploading…</Text>
+                            </View>
+                        )}
+                    </View>
+                )}
             </View>
 
+            <SideBar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-            {/* Bottom Section - Controls */}
-            <View
-                style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-around',
-                    alignItems: 'center',
-                    // paddingVertical: 12,
-                    backgroundColor: 'black',
-                    marginBottom: 30,
-                    // borderWidth:2
-
-                }}
-            >
-                <TouchableOpacity onPress={handleGalleryLaunch}>
-                    <FontAwesome5 name="images" size={22} color="#fff" />
-                </TouchableOpacity>
-
-                <TouchableOpacity>
-                    <FontAwesome5 name="crosshairs" size={22} color="#fff" />
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={takePhoto} style={styles.captureOuter}>
-                    <View style={styles.captureInner} />
-                </TouchableOpacity>
-
-                <TouchableOpacity>
-                    <FontAwesome5 name="bolt" size={22} color="#fff" />
-                </TouchableOpacity>
-
-                <TouchableOpacity>
-                    {selectedImage ? (
-                        <Image
-                            source={{ uri: selectedImage }}
-                            style={{ width: 37, height: 45, borderRadius: 5 }}
-                        />
+            {/* Bottom black dock */}
+            <View style={styles.bottomDock}>
+                <TouchableOpacity style={styles.thumb} onPress={pickFromGallery}>
+                    {photo ? (
+                        <Image source={{ uri: photo }} style={styles.thumbImg} />
                     ) : (
-                        <FontAwesome5 name="id-card" size={24} color="#fff" />
+                        <View style={styles.thumbPlaceholder} />
                     )}
                 </TouchableOpacity>
-            </View>
-            {/* Modal */}
-        </View>
 
+                <TouchableOpacity
+                    onPress={takePhoto}
+                    style={[styles.shutter, photo && styles.shutterDisabled]}
+                    disabled={!!photo}
+                />
+
+                <TouchableOpacity
+                    style={styles.rotate}
+                    onPress={() =>
+                        setCameraPosition((p) => (p === "front" ? "back" : "front"))
+                    }
+                    disabled={!!photo}
+                >
+                    <FontAwesome5 name="sync-alt" size={25} color="black" />
+                </TouchableOpacity>
+            </View>
+
+            {/* Scrollable modes bar */}
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.modeTabs}
+            >
+                <Text style={styles.modeDim}>PORTRAIT</Text>
+                <Text style={styles.modeDim}>PHOTO</Text>
+                <Text style={styles.modeActive}>DOCUMENT</Text>
+                <Text style={styles.modeDim}>VIDEO</Text>
+                <Text style={styles.modeDim}>MORE</Text>
+            </ScrollView>
+        </View>
     );
-};
+}
+
+const PAD = 16;
 
 const styles = StyleSheet.create({
-    container: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: '#fff', height: 470 },
-    dropdownContainer: { width: '90%', marginBottom: 20 },
-    label: { fontSize: 16, fontWeight: 'bold', marginBottom: 5, color: '#333' },
-    pickerWrapper: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, backgroundColor: '#fff', overflow: 'hidden' },
-    picker: { width: '100%' },
-    disabled: { opacity: 0.5 },
-    button: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, flexDirection: "column", alignItems: 'center', justifyContent: 'center', marginTop: 20 },
-    cameraImage: { width: 250, height: 250, marginRight: 10, resizeMode: "contain" },
-    buttonText: { fontSize: 22, color: '#ED008C', fontWeight: '900', marginRight: 12 },
-    loader: { marginTop: 20 },
-    dataContainer: { padding: 16, backgroundColor: '#fff', width: "100%", display: "flex" },
-    dataTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 10 },
-    dataLabel: { fontSize: 16, fontWeight: '600', marginTop: 8 },
-    dataValue: { fontSize: 16, color: '#333' },
-    doctorContainer: {
-        marginBottom: 10,
-        padding: 10,
-        backgroundColor: "#f8f8f8",
+    root: { flex: 1, backgroundColor: "#000" },
+    center: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+    statusBar: {
+        paddingTop:8,
+        height: 80,
+        paddingHorizontal: PAD,
+        flexDirection: "row",
+        alignItems: "center",
+        // gap: 10,
+    },
+
+    extractBtn: { backgroundColor: "#007bff" },
+
+    hamburgerButton: {
+        marginLeft: 8,
+        backgroundColor: "white",
+        padding: 6,
         borderRadius: 8,
-        shadowColor: "#000",
-        shadowOpacity: 0.1,
-        shadowOffset: { width: 0, height: 2 },
-    },
-    dataTitle1: {
-        fontSize: 16,
-        fontWeight: "bold",
-        color: "#333",
-    },
-    dataDesignation: {
-        fontSize: 14,
-        color: "#666",
     },
 
-
-    footerplz: {  // Updated style name
+    previewWrap: {
         width: "100%",
-        paddingVertical: 10,
-        backgroundColor: "#f8f8f8",
+        height: height * 0.64, // a bit taller
+        position: "relative",
+        backgroundColor: "#111",
     },
-    footerButton: {
+
+    /* Zoom overlay */
+    zoomOverlay: {
+        position: "absolute",
+        bottom: 20,
+        alignSelf: "center",
+        flexDirection: "row",
+        backgroundColor: "rgba(0,0,0,0.4)",
+        borderRadius: 30,
+        paddingHorizontal: 6,
+    },
+    zoomChip: {
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        margin: 6,
+        borderRadius: 18,
+        backgroundColor: "rgba(255,255,255,0.15)",
+    },
+    zoomChipActive: { backgroundColor: "#fff" },
+    zoomTxt: { color: "#eee", fontWeight: "600" },
+    zoomTxtActive: { color: "#000" },
+
+    /* Preview modal */
+    previewOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    backdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: "rgba(0,0,0,0.75)", // dim background
+    },
+    previewCard: {
+        width: width * 0.88,
+        borderRadius: 14,
+        backgroundColor: "#111",
+        overflow: "hidden",
+    },
+    previewImg: { width: "100%", height: width * 0.88 * (4 / 3) }, // nice card ratio
+    previewActions: {
+        padding: 12,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        gap: 10,
+    },
+    actionBtn: {
+        flex: 1,
+        flexDirection: "row",
+        justifyContent: "center",
+        alignItems: "center",
         paddingVertical: 12,
-        paddingHorizontal: 20,
-        marginHorizontal: 8,
-        borderRadius: 8,
-        backgroundColor: "#003366",
+        borderRadius: 10,
+        gap: 8,
     },
-    selectedButton: {
-        backgroundColor: "#2B3991",
+    uploadBtn: { backgroundColor: "#28a745" ,padding:9},
+    retakeBtn: { backgroundColor: "#fff" },
+    actionTxtLight: { color: "#fff", fontWeight: "700" },
+    actionTxtDark: { color: "#000", fontWeight: "700" },
+
+    /* Bottom dock */
+    bottomDock: {
+        marginTop: 8,
+        height: 120,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-around",
+        backgroundColor: "#000",
     },
-    footerText: {
-        color: "#ED008C",
-        fontSize: 16,
-        fontWeight: "900"
+    thumb: { width: 60, height: 60, borderRadius: 30, overflow: "hidden" },
+    thumbImg: { width: "100%", height: "100%" },
+    thumbPlaceholder: {
+        width: "100%",
+        height: "100%",
+        borderRadius: 30,
+        backgroundColor: "#333",
     },
-    selectedText: {
-        color: "#fff",
-        fontWeight: "bold",
+    shutter: {
+        width: 78,
+        height: 78,
+        borderRadius: 43,
+        backgroundColor: "#fff",
+        borderWidth: 4,
+        borderColor: "#ddd",
     },
-
-
-
-
-    logo: {
-        width: 120,  // Adjust as needed
-        height: 120, // Adjust as needed
-        alignSelf: "center", // Center the logo
-        marginBottom: 10, // Spacing between logo and camera icon
-    },
-
-
-
-
-    captureOuter: {
-        width: 70, // Slightly bigger than the black button
-        height: 70,
-        borderRadius: 37,
-        backgroundColor: '#fff', // white outer
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: '#000',
-    },
-    captureInner: {
+    shutterDisabled: { opacity: 0.4 },
+    rotate: {
         width: 60,
         height: 60,
-        borderRadius: 32,
-        backgroundColor: '#000', // black inner circle
+        borderRadius: 30,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "#fff",
     },
 
-
-
-
-    modalContainer: {
-        flex: 1,
-        justifyContent: 'flex-end',
-        backgroundColor: 'rgba(0,0,0,0.5)',
+    /* Modes bar */
+    modeTabs: {
+        paddingHorizontal: 20,
+        backgroundColor: "#000",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 20,
+        marginBottom: 70,
     },
-    modalContent: {
-        backgroundColor: '#fff',
-        padding: 20,
-        borderTopLeftRadius: 15,
-        borderTopRightRadius: 15,
-    },
-    modalButton: {
-        padding: 15,
-        fontWeight: "900"
-    },
-    modalText: {
-        fontSize: 18,
-        fontWeight: "500"
-    },
-    modalCancel: {
-        padding: 15,
-        alignItems: 'center',
-        fontWeight: "900"
-    },
-    cancelText: {
-        color: 'red',
-        fontSize: 16,
-        fontWeight: "900"
-    },
+    modeDim: { color: "#888", letterSpacing: 1, fontWeight: "700", fontSize: 12 },
+    modeActive: { color: "#fff", letterSpacing: 1, fontWeight: "800", fontSize: 12 },
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    frameBox: {
-        width: 350, // Adjust as needed
-        height: 350,
-        position: 'relative',
-        alignSelf: 'center',
-    },
-
-    corner: {
-        position: 'absolute',
-        width: 30,
-        height: 30,
-        borderColor: '#0096FF',
-    },
-
-    topLeft: {
+    /* Upload loader overlay */
+    loaderOverlay: {
+        position: "absolute",
         top: 0,
         left: 0,
-        borderTopWidth: 4,
-        borderLeftWidth: 4,
-    },
-
-    topRight: {
-        top: 0,
         right: 0,
-        borderTopWidth: 4,
-        borderRightWidth: 4,
-    },
-
-    bottomLeft: {
         bottom: 0,
-        left: 0,
-        borderBottomWidth: 4,
-        borderLeftWidth: 4,
+        justifyContent: "center",
+        alignItems: "center",
     },
-
-    bottomRight: {
-        bottom: 0,
-        right: 0,
-        borderBottomWidth: 4,
-        borderRightWidth: 4,
-    },
-
 });
-
-export default Dashboard;
-
-
-
-

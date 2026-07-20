@@ -154,7 +154,7 @@ const OnboardScreen = () => {
                     <Text style={styles.buttonText}>SIGN IN</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("signup")}>
+                <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("ProfileScreen")}>
                     <Text style={styles.buttonText}>SIGN UP</Text>
                 </TouchableOpacity>
             </View>

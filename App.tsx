@@ -22,6 +22,9 @@ import CameraScreen from "./Login/CameraScreen";
 import onBoardScreen from "./Login/Screens/Onboard/onBoardScreen";
 import LoginScreen from "./Login/Screens/Login/LoginScreen";
 import OnboardScreen from "./Login/Screens/Onboard/onBoardScreen";
+import ProfileScreen from "./Login/Screens/Profile/ProfileScreen";
+import OnboardingSlider from "./Login/onboard/OnboardSlider";
+import ExtractedTextScreen from "./Login/Screens/ExtractedTextScreen/ExtractedTextScreen";
 
 export type RootStackParamList = {
   navigate(arg0: string): void;
@@ -39,7 +42,7 @@ const App = () => {
   useEffect(() => {
     setTimeout(() => {
       setIsLoading(false);
-    }, 2800);
+    }, 22800);
   }, []);
 
   return (
@@ -52,28 +55,50 @@ const App = () => {
     >
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          {isLoading ? (
-            <Stack.Screen name="Splash" component={SplashScreen} />
-          ) : (
-            <>
-                <Stack.Screen name="onboard" component={OnboardScreen} />
-                <Stack.Screen name="login" component={LoginScreen} />
-              <Stack.Screen name="signup" component={SignupScreen} />
-              <Stack.Screen name="dashboard" component={Dashboard} />
-              <Stack.Screen
-                name="VisitingCardForm"
-                component={VisitingCardForm}
-              />
-              <Stack.Screen name="success" component={SuccessScreen} />
-              <Stack.Screen name="SavedCards" component={SavedCards} />
-              <Stack.Screen name="CameraScreen" component={CameraScreen} />
-            </>
-          )}
+        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Splash">
+          <Stack.Screen name="Splash" component={SplashScreen} />
+          <Stack.Screen name="onboardSlider" component={OnboardingSlider} />
+          <Stack.Screen name="onboard" component={OnboardScreen} />
+          <Stack.Screen name="login" component={LoginScreen} />
+          <Stack.Screen name="signup" component={SignupScreen} />
+          <Stack.Screen name="dashboard" component={Dashboard} />
+          <Stack.Screen name="VisitingCardForm" component={VisitingCardForm} />
+          <Stack.Screen name="success" component={SuccessScreen} />
+          <Stack.Screen name="SavedCards" component={SavedCards} />
+          <Stack.Screen name="CameraScreen" component={CameraScreen} />
+          <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
+          <Stack.Screen name="ExtractedTextScreen" component={ExtractedTextScreen} />
         </Stack.Navigator>
       </NavigationContainer>
+
     </SafeAreaView>
   );
 };
 
 export default App;
+
+
+
+
+
+<Stack.Navigator screenOptions={{ headerShown: false }}>
+  {true ? (
+    <Stack.Screen name="Splash" component={OnboardingSlider} />
+  ) : (
+    <>
+      <Stack.Screen name="onboard" component={OnboardScreen} />
+      <Stack.Screen name="login" component={LoginScreen} />
+      <Stack.Screen name="signup" component={SignupScreen} />
+      <Stack.Screen name="dashboard" component={Dashboard} />
+      <Stack.Screen
+        name="VisitingCardForm"
+        component={VisitingCardForm}
+      />
+      <Stack.Screen name="success" component={SuccessScreen} />
+      <Stack.Screen name="SavedCards" component={SavedCards} />
+      <Stack.Screen name="CameraScreen" component={CameraScreen} />
+      <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
+      <Stack.Screen name="onboardSlider" component={OnboardingSlider} />
+    </>
+  )}
+</Stack.Navigator>
